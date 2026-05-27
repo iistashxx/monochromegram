@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>MonochromeGram — Поиск людей + полная админ-панель</title>
+    <title>MonochromeGram — Полный список пользователей + поиск</title>
     <style>
         * {
             margin: 0;
@@ -52,7 +52,6 @@
             background: var(--bg-page);
         }
 
-        /* Левая панель */
         .chats-sidebar {
             width: 320px;
             background: var(--bg-sidebar);
@@ -149,7 +148,6 @@
             max-width: 160px;
         }
 
-        /* Правая область */
         .main-area {
             flex: 1;
             display: flex;
@@ -241,7 +239,6 @@
             color: black;
         }
 
-        /* Профиль */
         .profile-view {
             height: 100%;
             display: flex;
@@ -321,7 +318,6 @@
             color: var(--text-secondary);
         }
 
-        /* Модальные окна */
         .modal-overlay {
             position: fixed;
             top: 0;
@@ -411,10 +407,10 @@
 
 <script>
     // ---------- КЛЮЧИ ----------
-    const STORAGE_USERS = "mono_users_full";
-    const STORAGE_MESSAGES = "mono_messages_full";
-    const STORAGE_SESSION = "mono_session_full";
-    const STORAGE_MASTER_PASS = "mono_master_pass_full";
+    const STORAGE_USERS = "mono_users_full_v2";
+    const STORAGE_MESSAGES = "mono_messages_full_v2";
+    const STORAGE_SESSION = "mono_session_full_v2";
+    const STORAGE_MASTER_PASS = "mono_master_pass_v2";
     const ADMIN_LOGIN = "Сташикс";
 
     // ---------- ИНИЦИАЛИЗАЦИЯ ----------
@@ -700,6 +696,7 @@
 
     function renderProfileView(user, isAdminUser) {
         const masterPass = getMasterPass();
+        const allUsers = adminGetAllUsers();
         return `
             <div class="profile-view">
                 <div class="profile-card">
@@ -722,7 +719,7 @@
                         <button id="changeMasterPassBtn">Сменить</button>
                     </div>
                     <div>
-                        <h4>Все пользователи (${adminGetAllUsers().length})</h4>
+                        <h4>Все пользователи (${allUsers.length})</h4>
                         <div id="adminUserList" style="max-height:250px; overflow-y:auto;"></div>
                     </div>
                 </div>
@@ -764,7 +761,7 @@
         modalDiv.innerHTML = `
             <div class="modal-card">
                 <h3>🔍 Поиск людей</h3>
-                <input type="text" id="searchInput" placeholder="Введите логин..." autocomplete="off">
+                <input type="text" id="searchInput" placeholder="Введите логин (русские и английские буквы)..." autocomplete="off">
                 <div id="searchResults" style="max-height: 300px; overflow-y: auto; margin-top: 1rem;"></div>
                 <div class="modal-buttons">
                     <button id="closeSearchModal" class="cancel-modal">Закрыть</button>
@@ -861,7 +858,7 @@
         document.getElementById("navChatsBtn")?.addEventListener("click", () => { currentView = "chats"; activeChatFriend = null; render(); });
         document.getElementById("navProfileBtn")?.addEventListener("click", () => { currentView = "profile"; activeChatFriend = null; render(); });
 
-        // Поиск людей (кнопка 🔍)
+        // Поиск людей
         const searchBtn = document.getElementById("openSearchModalBtn");
         if (searchBtn) searchBtn.onclick = () => showSearchModal(user);
 
@@ -926,7 +923,13 @@
         const container = document.getElementById("adminUserList");
         if (!container) return;
         const users = adminGetAllUsers();
-        container.innerHTML = users.map(u => `
+        // Показываем ВСЕХ пользователей (включая админа, но админа можно пропустить для редактирования)
+        const filteredUsers = users; // показываем всех, чтобы администратор видел каждого
+        if (filteredUsers.length === 0) {
+            container.innerHTML = '<div style="color:#aaa; padding:0.5rem;">Нет пользователей</div>';
+            return;
+        }
+        container.innerHTML = filteredUsers.map(u => `
             <div class="user-list-item">
                 <div>${escapeHtml(u.login)} ${u.verified ? '✓' : ''}</div>
                 <div>
