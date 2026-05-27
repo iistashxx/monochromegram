@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>MonochromeGram — Админ-панель (только реальные пользователи)</title>
+    <title>MonochromeGram — Поиск людей + полная админ-панель</title>
     <style>
         * {
             margin: 0;
@@ -40,9 +40,9 @@
             to { opacity: 1; transform: translateY(0); }
         }
 
-        @keyframes slideInLeft {
-            from { transform: translateX(-20px); opacity: 0; }
-            to { transform: translateX(0); opacity: 1; }
+        @keyframes modalFade {
+            from { opacity: 0; transform: scale(0.96); }
+            to { opacity: 1; transform: scale(1); }
         }
 
         .app {
@@ -52,7 +52,7 @@
             background: var(--bg-page);
         }
 
-        /* Левая панель — список чатов */
+        /* Левая панель */
         .chats-sidebar {
             width: 320px;
             background: var(--bg-sidebar);
@@ -74,7 +74,6 @@
         .sidebar-header h2 {
             font-size: 1.5rem;
             font-weight: 600;
-            letter-spacing: -0.3px;
         }
 
         .add-friend-btn {
@@ -242,7 +241,7 @@
             color: black;
         }
 
-        /* Профиль / настройки */
+        /* Профиль */
         .profile-view {
             height: 100%;
             display: flex;
@@ -322,6 +321,67 @@
             color: var(--text-secondary);
         }
 
+        /* Модальные окна */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            backdrop-filter: blur(8px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 2000;
+            animation: fadeIn 0.2s ease;
+        }
+
+        .modal-card {
+            background: var(--bg-surface);
+            border-radius: 32px;
+            padding: 2rem;
+            width: 90%;
+            max-width: 450px;
+            border: 1px solid var(--border);
+            animation: modalFade 0.2s ease;
+        }
+
+        .modal-card h3 {
+            margin-bottom: 1.2rem;
+            text-align: center;
+        }
+
+        .modal-card input {
+            width: 100%;
+            padding: 0.8rem 1rem;
+            margin-bottom: 1rem;
+            background: var(--bg-elevated);
+            border: 1px solid var(--border);
+            border-radius: 60px;
+            color: white;
+            font-size: 0.95rem;
+            outline: none;
+        }
+
+        .search-result-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.7rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .modal-buttons {
+            display: flex;
+            gap: 0.8rem;
+            margin-top: 1rem;
+        }
+
+        .cancel-modal {
+            background: #1f1f1f;
+        }
+
         @media (max-width: 700px) {
             .chats-sidebar {
                 position: absolute;
@@ -350,17 +410,16 @@
 <div id="root"></div>
 
 <script>
-    // ---------- КЛЮЧИ ХРАНИЛИЩА ----------
-    const STORAGE_USERS = "mono_users_real";
-    const STORAGE_MESSAGES = "mono_messages_real";
-    const STORAGE_SESSION = "mono_session_real";
-    const STORAGE_MASTER_PASS = "mono_master_pass_real";
+    // ---------- КЛЮЧИ ----------
+    const STORAGE_USERS = "mono_users_full";
+    const STORAGE_MESSAGES = "mono_messages_full";
+    const STORAGE_SESSION = "mono_session_full";
+    const STORAGE_MASTER_PASS = "mono_master_pass_full";
     const ADMIN_LOGIN = "Сташикс";
 
-    // ---------- ИНИЦИАЛИЗАЦИЯ (ТОЛЬКО АДМИН, БЕЗ ФЕЙКОВ) ----------
+    // ---------- ИНИЦИАЛИЗАЦИЯ ----------
     function initData() {
         if (!localStorage.getItem(STORAGE_USERS)) {
-            // Создаём только администратора. Никаких фейковых пользователей.
             const defaultUsers = [
                 { login: "Сташикс", password: "admin123", verified: true, friends: [] }
             ];
@@ -417,7 +476,19 @@
         if (getSession() === updated.login) setSession(updated.login);
     }
 
-    // Верификация обычного пользователя через мастер-пароль
+    // Смена пароля
+    function changePassword(login, oldPassword, newPassword) {
+        if (newPassword.length < 3) throw new Error("Новый пароль минимум 3 символа");
+        let users = getUsers();
+        let user = users.find(u => u.login === login);
+        if (!user) throw new Error("Пользователь не найден");
+        if (user.password !== oldPassword) throw new Error("Неверный старый пароль");
+        user.password = newPassword;
+        saveUsers(users);
+        return true;
+    }
+
+    // Верификация через мастер-пароль
     function verifyUserWithMaster(login, masterKey) {
         if (masterKey !== getMasterPass()) throw new Error("Неверный мастер-пароль");
         let users = getUsers();
@@ -428,14 +499,12 @@
         return true;
     }
 
-    // Админские функции (только для Сташикса)
+    // Админские функции
     function isAdmin(user) { return user && user.login === ADMIN_LOGIN; }
-
     function adminSetMasterPassword(newPass) {
         if (!newPass || newPass.length < 3) throw new Error("Пароль минимум 3 символа");
         setMasterPass(newPass);
     }
-
     function adminSetUserVerified(login, status) {
         let users = getUsers();
         let user = users.find(u => u.login === login);
@@ -443,11 +512,7 @@
         user.verified = status;
         saveUsers(users);
     }
-
-    function adminGetAllUsers() {
-        // Возвращаем всех пользователей, включая администратора, но без фейков (их и нет)
-        return getUsers();
-    }
+    function adminGetAllUsers() { return getUsers(); }
 
     // Добавление друга (взаимное)
     function addFriend(currentLogin, friendLogin) {
@@ -463,7 +528,18 @@
         return true;
     }
 
-    // Сообщения (личные чаты)
+    // Поиск пользователей (исключая себя и уже друзей)
+    function searchUsers(query, currentUserLogin, existingFriends) {
+        if (!query.trim()) return [];
+        const users = getUsers();
+        return users.filter(u => 
+            u.login.toLowerCase().includes(query.toLowerCase()) && 
+            u.login !== currentUserLogin && 
+            !existingFriends.includes(u.login)
+        );
+    }
+
+    // Сообщения
     function getChatMessages(userLogin, friendLogin) {
         let chatId = [userLogin, friendLogin].sort().join("_");
         let store = getMessagesStore();
@@ -506,7 +582,7 @@
     }
 
     // ---------- UI ----------
-    let currentView = "chats"; // chats, profile
+    let currentView = "chats";
     let activeChatFriend = null;
     let mobileMenuOpen = false;
 
@@ -566,7 +642,7 @@
             rightContent = `
                 <div class="profile-view">
                     <div class="profile-card">
-                        <div class="avatar" style="font-size:4rem; text-align:center;">💬</div>
+                        <div style="font-size:4rem; text-align:center;">💬</div>
                         <h3 style="text-align:center;">Выберите чат</h3>
                         <p style="color:#aaa; text-align:center;">Нажмите на диалог слева</p>
                     </div>
@@ -579,10 +655,10 @@
                 <div class="chats-sidebar" id="chatsSidebar">
                     <div class="sidebar-header">
                         <h2>Чаты</h2>
-                        <button class="add-friend-btn" id="openAddFriendModal">+</button>
+                        <button class="add-friend-btn" id="openSearchModalBtn">🔍</button>
                     </div>
                     <div class="chats-list" id="chatsList">
-                        ${friendsWithLast.length === 0 ? '<div class="empty-chats">Нет диалогов. Нажмите + чтобы добавить друга.</div>' :
+                        ${friendsWithLast.length === 0 ? '<div class="empty-chats">Нет диалогов. Нажмите 🔍 чтобы найти людей.</div>' : 
                             friendsWithLast.map(f => `
                                 <div class="chat-item ${activeChatFriend === f.login ? 'active' : ''}" data-friend="${f.login}">
                                     <div class="chat-avatar">👤</div>
@@ -602,8 +678,8 @@
                     <div class="chat-header">
                         <button class="back-btn" id="mobileMenuToggle">☰</button>
                         ${activeChatFriend ? `
-                            <div class="friend-avatar" style="width:44px;height:44px;background:#242424;border-radius:50%;display:flex;align-items:center;justify-content:center;">👤</div>
-                            <div class="friend-details">
+                            <div style="width:44px;height:44px;background:#242424;border-radius:50%;display:flex;align-items:center;justify-content:center;">👤</div>
+                            <div>
                                 <h3>${escapeHtml(activeChatFriend)} ${getFriendVerified(activeChatFriend) ? '<span>✓</span>' : ''}</h3>
                             </div>
                             <div style="flex:1"></div>
@@ -633,19 +709,21 @@
                         ${user.verified ? '<span style="font-size:1.2rem;">✓</span>' : ''}
                     </div>
                     <p style="margin:1rem 0; color:#aaa;">Статус: ${user.verified ? 'Верифицирован' : 'Не верифицирован'}</p>
+                    
                     ${!user.verified ? `<button id="verifySelfBtn" style="margin-top:0.5rem;">🔑 Пройти верификацию (мастер-пароль)</button>` : ''}
-                    <button id="logoutBtn" style="margin-top:1rem; background:#1f1f1f;">Выйти</button>
+                    <button id="openChangePasswordModalBtn" style="margin-top:0.8rem;">🔐 Сменить пароль</button>
+                    <button id="logoutBtn" style="margin-top:0.8rem; background:#1f1f1f;">Выйти</button>
                 </div>
                 ${isAdminUser ? `
                 <div class="admin-panel">
                     <h3>🛠 Админ-панель (Сташикс)</h3>
                     <div class="admin-input-group">
-                        <input type="text" id="newMasterPass" placeholder="Новый мастер-пароль для верификации" value="${escapeHtml(masterPass)}">
+                        <input type="text" id="newMasterPass" placeholder="Новый мастер-пароль" value="${escapeHtml(masterPass)}">
                         <button id="changeMasterPassBtn">Сменить</button>
                     </div>
                     <div>
-                        <h4>Управление пользователями (только реальные люди)</h4>
-                        <div id="adminUserList" style="max-height:200px; overflow-y:auto;"></div>
+                        <h4>Все пользователи (${adminGetAllUsers().length})</h4>
+                        <div id="adminUserList" style="max-height:250px; overflow-y:auto;"></div>
                     </div>
                 </div>
                 ` : ''}
@@ -657,7 +735,7 @@
         const messages = getChatMessages(user.login, friendLogin);
         return `
             <div class="messages-container" id="chatMessagesContainer">
-                ${messages.length === 0 ? '<div class="empty-chats" style="text-align:center;">Напишите первое сообщение...</div>' :
+                ${messages.length === 0 ? '<div class="empty-chats" style="text-align:center;">Напишите первое сообщение...</div>' : 
                     messages.map(msg => {
                         const isOwn = msg.from === user.login;
                         return `
@@ -679,14 +757,100 @@
         `;
     }
 
+    // Модальное окно поиска людей
+    function showSearchModal(user) {
+        const modalDiv = document.createElement("div");
+        modalDiv.className = "modal-overlay";
+        modalDiv.innerHTML = `
+            <div class="modal-card">
+                <h3>🔍 Поиск людей</h3>
+                <input type="text" id="searchInput" placeholder="Введите логин..." autocomplete="off">
+                <div id="searchResults" style="max-height: 300px; overflow-y: auto; margin-top: 1rem;"></div>
+                <div class="modal-buttons">
+                    <button id="closeSearchModal" class="cancel-modal">Закрыть</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modalDiv);
+
+        const searchInput = modalDiv.querySelector("#searchInput");
+        const resultsDiv = modalDiv.querySelector("#searchResults");
+        const closeBtn = modalDiv.querySelector("#closeSearchModal");
+
+        const updateSearch = () => {
+            const query = searchInput.value;
+            const existingFriends = user.friends || [];
+            const results = searchUsers(query, user.login, existingFriends);
+            if (results.length === 0) {
+                resultsDiv.innerHTML = '<div style="color:#aaa; text-align:center; padding:1rem;">Ничего не найдено</div>';
+                return;
+            }
+            resultsDiv.innerHTML = results.map(u => `
+                <div class="search-result-item">
+                    <span>${escapeHtml(u.login)} ${u.verified ? '✓' : ''}</span>
+                    <button class="addFriendFromSearch" data-login="${escapeHtml(u.login)}">➕ Добавить в друзья</button>
+                </div>
+            `).join('');
+            resultsDiv.querySelectorAll(".addFriendFromSearch").forEach(btn => {
+                btn.onclick = () => {
+                    const friendLogin = btn.getAttribute("data-login");
+                    try {
+                        addFriend(user.login, friendLogin);
+                        alert(`Пользователь ${friendLogin} добавлен в друзья!`);
+                        modalDiv.remove();
+                        render();
+                    } catch(e) { alert(e.message); }
+                };
+            });
+        };
+
+        searchInput.oninput = updateSearch;
+        closeBtn.onclick = () => modalDiv.remove();
+        modalDiv.onclick = (e) => { if (e.target === modalDiv) modalDiv.remove(); };
+        updateSearch();
+    }
+
+    // Модальное окно смены пароля
+    function showChangePasswordModal(user) {
+        const modalDiv = document.createElement("div");
+        modalDiv.className = "modal-overlay";
+        modalDiv.innerHTML = `
+            <div class="modal-card">
+                <h3>Смена пароля</h3>
+                <input type="password" id="modalOldPass" placeholder="Старый пароль">
+                <input type="password" id="modalNewPass" placeholder="Новый пароль (мин. 3 символа)">
+                <div class="modal-buttons">
+                    <button id="modalConfirmBtn">Изменить</button>
+                    <button id="modalCancelBtn" class="cancel-modal">Отмена</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modalDiv);
+        const confirmBtn = modalDiv.querySelector("#modalConfirmBtn");
+        const cancelBtn = modalDiv.querySelector("#modalCancelBtn");
+        const oldPassInput = modalDiv.querySelector("#modalOldPass");
+        const newPassInput = modalDiv.querySelector("#modalNewPass");
+        const closeModal = () => modalDiv.remove();
+        confirmBtn.onclick = () => {
+            const oldPass = oldPassInput.value;
+            const newPass = newPassInput.value;
+            if (!oldPass || !newPass) { alert("Заполните оба поля"); return; }
+            try {
+                changePassword(user.login, oldPass, newPass);
+                alert("Пароль успешно изменён!");
+                closeModal();
+            } catch(e) { alert(e.message); }
+        };
+        cancelBtn.onclick = closeModal;
+        modalDiv.onclick = (e) => { if (e.target === modalDiv) closeModal(); };
+    }
+
     function attachMainEvents(user, friendsList) {
         // Выбор чата
         document.querySelectorAll(".chat-item[data-friend]").forEach(el => {
-            el.addEventListener("click", (e) => {
-                const friend = el.getAttribute("data-friend");
-                activeChatFriend = friend;
+            el.addEventListener("click", () => {
+                activeChatFriend = el.getAttribute("data-friend");
                 currentView = "chats";
-                mobileMenuOpen = false;
                 const sidebar = document.getElementById("chatsSidebar");
                 if (sidebar && window.innerWidth <= 700) sidebar.classList.remove("open");
                 render();
@@ -694,25 +858,12 @@
         });
 
         // Навигация
-        const navChats = document.getElementById("navChatsBtn");
-        const navProfile = document.getElementById("navProfileBtn");
-        if (navChats) navChats.onclick = () => { currentView = "chats"; activeChatFriend = null; render(); };
-        if (navProfile) navProfile.onclick = () => { currentView = "profile"; activeChatFriend = null; render(); };
+        document.getElementById("navChatsBtn")?.addEventListener("click", () => { currentView = "chats"; activeChatFriend = null; render(); });
+        document.getElementById("navProfileBtn")?.addEventListener("click", () => { currentView = "profile"; activeChatFriend = null; render(); });
 
-        // Добавить друга
-        const addBtn = document.getElementById("openAddFriendModal");
-        if (addBtn) {
-            addBtn.onclick = () => {
-                const friendLogin = prompt("Введите логин пользователя:");
-                if (friendLogin && friendLogin.trim()) {
-                    try {
-                        addFriend(user.login, friendLogin.trim());
-                        alert(`Друг ${friendLogin} добавлен!`);
-                        render();
-                    } catch(e) { alert(e.message); }
-                }
-            };
-        }
+        // Поиск людей (кнопка 🔍)
+        const searchBtn = document.getElementById("openSearchModalBtn");
+        if (searchBtn) searchBtn.onclick = () => showSearchModal(user);
 
         // Отправка сообщения
         const sendBtn = document.getElementById("sendChatMsgBtn");
@@ -731,48 +882,42 @@
         }
 
         // Выход
-        const logoutBtn = document.getElementById("logoutBtn");
-        if (logoutBtn) logoutBtn.onclick = () => { logout(); render(); };
+        document.getElementById("logoutBtn")?.addEventListener("click", () => { logout(); render(); });
 
-        // Само-верификация (обычный пользователь)
-        const verifySelf = document.getElementById("verifySelfBtn");
-        if (verifySelf) {
-            verifySelf.onclick = () => {
-                const pass = prompt("Введите текущий мастер-пароль для верификации:");
-                if (pass) {
-                    try {
-                        verifyUserWithMaster(user.login, pass);
-                        alert("Вы успешно верифицированы!");
-                        render();
-                    } catch(e) { alert(e.message); }
-                }
-            };
-        }
-
-        // Админ-панель (только если пользователь Сташикс)
-        if (isAdmin(user)) {
-            const changeMasterBtn = document.getElementById("changeMasterPassBtn");
-            if (changeMasterBtn) {
-                changeMasterBtn.onclick = () => {
-                    const newPass = document.getElementById("newMasterPass").value.trim();
-                    if (!newPass || newPass.length < 3) { alert("Минимум 3 символа"); return; }
-                    try {
-                        adminSetMasterPassword(newPass);
-                        alert("Мастер-пароль обновлён!");
-                        render();
-                    } catch(e) { alert(e.message); }
-                };
+        // Само-верификация
+        document.getElementById("verifySelfBtn")?.addEventListener("click", () => {
+            const pass = prompt("Введите мастер-пароль:");
+            if (pass) {
+                try {
+                    verifyUserWithMaster(user.login, pass);
+                    alert("Верификация пройдена!");
+                    render();
+                } catch(e) { alert(e.message); }
             }
+        });
+
+        // Смена пароля
+        document.getElementById("openChangePasswordModalBtn")?.addEventListener("click", () => showChangePasswordModal(user));
+
+        // Админ-панель
+        if (isAdmin(user)) {
+            document.getElementById("changeMasterPassBtn")?.addEventListener("click", () => {
+                const newPass = document.getElementById("newMasterPass").value.trim();
+                if (!newPass || newPass.length < 3) { alert("Минимум 3 символа"); return; }
+                try {
+                    adminSetMasterPassword(newPass);
+                    alert("Мастер-пароль обновлён!");
+                    render();
+                } catch(e) { alert(e.message); }
+            });
             renderAdminUserList();
         }
 
         // Мобильное меню
         const mobileToggle = document.getElementById("mobileMenuToggle");
         const sidebar = document.getElementById("chatsSidebar");
-        if (mobileToggle && sidebar) {
-            mobileToggle.onclick = () => sidebar.classList.toggle("open");
-        }
-        // автоскролл
+        if (mobileToggle && sidebar) mobileToggle.onclick = () => sidebar.classList.toggle("open");
+
         const msgContainer = document.getElementById("chatMessagesContainer");
         if (msgContainer) setTimeout(() => { msgContainer.scrollTop = msgContainer.scrollHeight; }, 50);
     }
@@ -781,17 +926,11 @@
         const container = document.getElementById("adminUserList");
         if (!container) return;
         const users = adminGetAllUsers();
-        // Фильтруем, чтобы администратор не видел самого себя в списке для верификации (но можно и показать, но обычно админ уже верифицирован)
-        const filteredUsers = users.filter(u => u.login !== ADMIN_LOGIN);
-        if (filteredUsers.length === 0) {
-            container.innerHTML = '<div style="color:#aaa; padding:0.5rem;">Нет зарегистрированных пользователей, кроме вас.</div>';
-            return;
-        }
-        container.innerHTML = filteredUsers.map(u => `
+        container.innerHTML = users.map(u => `
             <div class="user-list-item">
                 <div>${escapeHtml(u.login)} ${u.verified ? '✓' : ''}</div>
                 <div>
-                    ${!u.verified ? `<button class="adminVerifyBtn" data-login="${u.login}" data-status="true">✅ Верифицировать</button>` :
+                    ${!u.verified ? `<button class="adminVerifyBtn" data-login="${u.login}" data-status="true">✅ Верифицировать</button>` : 
                                     `<button class="adminVerifyBtn" data-login="${u.login}" data-status="false">❌ Снять верификацию</button>`}
                 </div>
             </div>
@@ -807,8 +946,7 @@
     }
 
     function getFriendVerified(login) {
-        const users = getUsers();
-        const u = users.find(u => u.login === login);
+        const u = getUsers().find(u => u.login === login);
         return u ? u.verified : false;
     }
 
@@ -822,7 +960,6 @@
         });
     }
 
-    // Автообновление чатов
     let interval;
     function startRefresh() {
         if (interval) clearInterval(interval);
